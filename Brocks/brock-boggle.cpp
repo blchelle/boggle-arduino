@@ -14,6 +14,10 @@
 // Define thresholds to determine if there was a touch
 #define MIN_PRESSURE 10
 #define MAX_PRESSURE 1000
+
+/* Defines constants for mapping touches to the pixel dimensions,
+   these numbers were found by playing around with the x, y values
+    before mapping them                                         */
 #define TOUCH_X_MIN 160
 #define TOUCH_X_MAX 880
 #define TOUCH_Y_MIN 100
@@ -41,14 +45,29 @@
 #define CHAR_HEIGHT TEXT_SIZE * 8
 #define CHAR_WIDTH TEXT_SIZE * 5
 #define SPACE_BETWEEN_CHARS 2
+#define GAME_WIDTH 5 * SPACE_BETWEEN + 4 * TILE_SIZE
+#define BUTTON_COL_WIDTH 100 
+
+#define GAME_TIME 15
 
 // Definces constants used for random board generation
 #define NUM_SHUFFLES 30
 #define NUM_DICE_SIDES 6
+
+/* 'DICE' is a variable that holds the contents of all 16 boggle dice used in the original game,
+   'DICE' contents won't change but the contents will be swapped so it can't be declared const */
 String DICE[16] = { "AEANEG", "AHSPCO", "ASPFFK", "OBJOAB", "IOTMUC", "RYVDEL",
                     "LREIXD", "EIUNES", "WNGEEH", "LNHNRZ", "TSTIYD", "OWTOAT",
                     "ERTTYL", "TOESSI", "TERWHV", "NUIHMQ" };
+
+/* Declares a variable that holds the 16 randomly chosen charcters in a game of boggle,
+   'boardLetters' can't be declared const as it will change from game to game,
+   'boardLetters' is global because it is used very frequently and contents are raraely changed */
 String boardLetters;
+
+// Keeps Track of Points and time for the game
+uint16_t points = 0;
+uint32_t time = GAME_TIME; 
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
@@ -74,24 +93,7 @@ void setup() {
     tft.fillScreen(ILI9341_BLACK);
 }
 
-void drawStart() {
-    for (int col = 0; col < 4; col++) {
-        for (int row = 0; row < 4; row++) {
-            tft.fillRect((col + 1) * SPACE_BETWEEN + col * TILE_SIZE, (row + 1) * SPACE_BETWEEN + row * TILE_SIZE,
-             TILE_SIZE, TILE_SIZE, ILI9341_WHITE);
-        }
-    }
-
-    tft.fillRect(4 * TILE_SIZE + 5 * SPACE_BETWEEN, SPACE_BETWEEN, BUTTON_WIDTH,
-         DISPLAY_HEIGHT - 2 * SPACE_BETWEEN, ILI9341_WHITE);
-
-    tft.setCursor(4 * TILE_SIZE + 5 * SPACE_BETWEEN + 25, DISPLAY_HEIGHT / 2 - CHAR_HEIGHT);
-    tft.setTextColor(ILI9341_BLACK, ILI9341_WHITE);
-    tft.print("NEW");
-    tft.setCursor(4 * TILE_SIZE + 5 * SPACE_BETWEEN + 15, DISPLAY_HEIGHT / 2 + CHAR_HEIGHT / 2);
-    tft.print("GAME");
-}
-
+//********************Functions used in multiple areas********************//
 TSPoint processTouch() {
     TSPoint touch = ts.getPoint();
 
@@ -112,6 +114,48 @@ TSPoint processTouch() {
     return touch;
 }
 
+void DrawButton(uint16_t x , uint16_t y, String text) {
+    tft.setTextColor(ILI9341_BLACK);
+    tft.fillRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, ILI9341_WHITE);
+    tft.setCursor(x + ((BUTTON_WIDTH - text.length() * (CHAR_WIDTH + SPACE_BETWEEN_CHARS)) / 2), 
+                  y + ((BUTTON_HEIGHT - (CHAR_HEIGHT - SPACE_BETWEEN_CHARS)) / 2));
+    tft.print(text);
+}
+
+uint8_t TilePress() {
+    // Get the touch coordinates
+    TSPoint touch = processTouch();
+    int8_t tilePressed;
+
+    // If touch wasnt registered then set tile pressed to -1
+    if (touch.x == 0 && touch.y == 0)
+        tilePressed = -1;
+    // Otherwise, Compute the tile that was pressed
+    else if (touch.x < 5 * SPACE_BETWEEN + 4 * TILE_SIZE && touch.y < 5 * SPACE_BETWEEN + 4 * TILE_SIZE) {
+        uint8_t x = constrain((touch.x - SPACE_BETWEEN) / (TILE_SIZE + SPACE_BETWEEN), 0, 3); // X coordinate
+        uint8_t y = constrain((touch.y - SPACE_BETWEEN) / (TILE_SIZE + SPACE_BETWEEN), 0, 3); // Y coordinate
+        tilePressed = (x + 4 * y); // Sum X and Y
+    }
+
+    return tilePressed;
+} 
+
+//********************END OF FUNCTION BLOCK*******************************//
+
+
+
+
+//********************Functions that will be used at the end of the game********************//
+
+
+
+//**********************************END OF FUNCTION BLOCK**************************************//
+
+
+
+
+
+//********************Functions that will be used during gameplay********************//
 void GenerateLetters() {
     int dieChosen;
     int letterChosen;
@@ -137,55 +181,124 @@ void GenerateLetters() {
     } 
 }
 
-
-void drawButton(int x , int y, String text) {
-    tft.setTextColor(ILI9341_BLACK);
-    tft.fillRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, ILI9341_WHITE);
-    tft.setCursor(x + ((BUTTON_WIDTH - text.length() * (CHAR_WIDTH + SPACE_BETWEEN_CHARS)) / 2), 
-                  y + ((BUTTON_HEIGHT - (CHAR_HEIGHT - SPACE_BETWEEN_CHARS)) / 2));
-    tft.print(text);
+void CheckTime(uint32_t start) {
+    if (time - (millis() / 1000 - start) < time) {
+        if (time > 10) {
+            tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
+        }
+        else {
+            tft.fillRect(GAME_WIDTH + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20, 
+                         24, 16, ILI9341_BLACK);
+            tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 12) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
+        }
+        time = constrain(time - (millis() / 1000 - start), 0, GAME_TIME);
+        tft.print(time);
+    }
 }
 
-void inGameSetup() {
+void InGameSetup() {
     tft.fillRect(4 * TILE_SIZE + 5 * SPACE_BETWEEN, SPACE_BETWEEN, BUTTON_WIDTH,
          DISPLAY_HEIGHT - 2 * SPACE_BETWEEN, ILI9341_BLACK);
 
-    drawButton(5 * SPACE_BETWEEN + 4 * TILE_SIZE, SPACE_BETWEEN, "SOLVE");
-    drawButton(5 * SPACE_BETWEEN + 4 * TILE_SIZE, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "ERASE");
-    drawButton(5 * SPACE_BETWEEN + 4 * TILE_SIZE, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "ENTER");
+    DrawButton(GAME_WIDTH, SPACE_BETWEEN, "SOLVE");
+    DrawButton(GAME_WIDTH, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "ERASE");
+    DrawButton(GAME_WIDTH, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "ENTER");
 
-    // Generates a random board NUM_SHUFFLES times
-    for (int i = 0; i < NUM_SHUFFLES; i++){
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+    
+    tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 45) / 2, TILE_SIZE + 2 * SPACE_BETWEEN);
+    tft.print("TIME");
+
+    tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
+    tft.print(time);
+
+    tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 70) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN);
+    tft.print("POINTS");
+
+    tft.setCursor(GAME_WIDTH + (BUTTON_COL_WIDTH - 10) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
+    tft.print(points);
+
+    // Generates a random board NUM_SHUFFLES times, this is what creates the "shuffle" animation
+    for (int i = 0; i < NUM_SHUFFLES; i++) {
         GenerateLetters();
         boardLetters = "";
     }
 }
- 
 
-void inGame() {
-    inGameSetup();
-    //drawButton()
+void InGame() {
+    // Draw the in game UI
+    InGameSetup();
+
+    while (time > 0) {
+        uint32_t startTime = millis() / 1000;
+        int8_t tilePressed = TilePress();
+        Serial.println(tilePressed);
+        CheckTime(startTime);
+    }
+    Serial.println("END");
+    //EndGame();
 }
 
-void preGame() {
+//**********************************************END OF FUNCTION BLOCK*************************************//
+
+
+
+
+
+
+//********************Functions that will be used for setup********************//
+void drawStart() {
+    for (int col = 0; col < 4; col++) {
+        for (int row = 0; row < 4; row++) {
+            tft.fillRect((col + 1) * SPACE_BETWEEN + col * TILE_SIZE, (row + 1) * SPACE_BETWEEN + row * TILE_SIZE,
+             TILE_SIZE, TILE_SIZE, ILI9341_WHITE);
+        }
+    }
+
+    tft.fillRect(4 * TILE_SIZE + 5 * SPACE_BETWEEN, SPACE_BETWEEN, BUTTON_WIDTH,
+         DISPLAY_HEIGHT - 2 * SPACE_BETWEEN, ILI9341_WHITE);
+
+    tft.setCursor(4 * TILE_SIZE + 5 * SPACE_BETWEEN + 25, DISPLAY_HEIGHT / 2 - CHAR_HEIGHT);
+    tft.setTextColor(ILI9341_BLACK, ILI9341_WHITE);
+    tft.print("NEW");
+    tft.setCursor(4 * TILE_SIZE + 5 * SPACE_BETWEEN + 15, DISPLAY_HEIGHT / 2 + CHAR_HEIGHT / 2);
+    tft.print("GAME");
+}
+
+void PreGame() {
     drawStart();
     while (true) {
         // Gets touch screen values
         TSPoint touch = processTouch();
-        Serial.print(touch.x);
-        Serial.print(", ");
-        Serial.println(touch.y);
-        delay(500);
         if (touch.x > 5 * SPACE_BETWEEN + 4 * TILE_SIZE)
-            inGame();
+            InGame();
 
     }
 }
 
+//********************************END OF FUNCTION BLOCK*********************************//
+
+
+
+
+
+
+//********************Functions that will be used in the 'solver' mode********************//
+
+
+
+//**********************************END OF FUNCTION BLOCK*********************************//
+
+
+
+
+
+
 int main() {
 
     setup();
-    preGame();
+    PreGame();
     Serial.end();
     return 0;
 }
