@@ -50,7 +50,7 @@
 #define GAME_SIZE 5 * SPACE_BETWEEN + 4 * TILE_SIZE
 #define BUTTON_COL_WIDTH 100 
 
-#define GAME_TIME 30
+#define GAME_TIME 60
 
 // Definces constants used for random board generation
 #define NUM_SHUFFLES 30
@@ -151,6 +151,8 @@ void DrawWord(String word) {
 
     // Write the word
     tft.print(word);
+
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
 }
 
 void ConnectTiles(uint8_t prev, uint8_t curr, uint8_t wLength, uint16_t color) {
@@ -194,7 +196,22 @@ void BoxStartTile(uint8_t tile) {
 
 //********************Functions that will be used at the end of the game********************//
 
+void PostGameSetup() {
+    // Draws the 3 post game buttons
+    tft.setTextSize(TEXT_SIZE);
+    DrawButton(GAME_SIZE, SPACE_BETWEEN, "SOLVE");
+    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "NEW");
+    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "SAME");
 
+    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    DrawWord("GAME OVER!");
+
+    delay(50000);
+}
+
+void PostGame() {
+    PostGameSetup();
+}
 
 //**********************************END OF FUNCTION BLOCK**************************************//
 
@@ -207,11 +224,13 @@ void GenerateLetters() {
     int dieChosen;
     int letterChosen;
 
+    randomSeed(analogRead(RAND_PIN));
+
     for (int i = 0; i < NUM_TILES; i++) {
         /* Selects a random dice from the remaining set, selects a random letter from that dice,
            appends it to the string                                                           */
-        dieChosen = analogRead(RAND_PIN) % (NUM_TILES - i);
-        letterChosen = analogRead(RAND_PIN) % NUM_DICE_SIDES;
+        dieChosen = random(NUM_TILES - i);
+        letterChosen = random(NUM_DICE_SIDES);
         boardLetters += DICE[dieChosen][letterChosen];
 
         // Draws the letter into its respective spot on the board
@@ -292,7 +311,6 @@ void InGameSetup() {
         boardLetters = "";
         GenerateLetters();
     }
-
     // Send the board to the server
     Serial.println(boardLetters);
 }
@@ -314,6 +332,17 @@ uint8_t TileValidity(uint8_t* visited, uint8_t tile ,uint8_t wLength) {
         return NUM_TILES;
 
     return tile;
+}
+
+void RedrawPoints() {
+    if (points < 10)
+        tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 10) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
+    else if (points < 100)
+        tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 22) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
+    else
+        tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 34) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
+    
+    tft.print(points);
 }
 
 String Erase(String word, uint8_t* visited) {
@@ -339,17 +368,30 @@ String Erase(String word, uint8_t* visited) {
 }
 
 String Enter(String word, uint8_t* visited) {
+    char isWord;
+
     // Send the word to the server
+    Serial.println(word);
 
+    while (Serial.available() != 1) {}
     // Wait for either a 0 or 1 to be sent
-
-    // If 1, then calculate and add points
-
-    // If 0 then do nothing 
+    isWord = Serial.read();
+    if (isWord == '1') {
+        points += constrain(word.length() - 2, 0, 6);
+        RedrawPoints();
+    }
 
     // Clear the word and reset the visited tiles
-    while (word != "") {
+    while (word != "") 
         word = Erase(word, &visited[0]);
+
+    if (isWord == '1') {
+        tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
+        DrawWord("VALID WORD!");
+    }
+    else {
+        tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+        DrawWord("INVALID!");
     }
 
     // Return the blank string
@@ -423,7 +465,10 @@ void InGame() {
 
         pressPrev = pressCurr;
     }
-    Serial.println("END");
+    word = Enter(word, &visited[0]);
+    // Send NEXT PHASE\n to the server to indicate the end of the game
+    Serial.println("NEXT PHASE");
+    PostGame();
 }
 
 //**********************************************END OF FUNCTION BLOCK*************************************//
