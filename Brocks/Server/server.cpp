@@ -13,11 +13,12 @@
 
 vector<pair<string, vector<int>>> boggleWords; // Stores all words attainable on a given boggle board
 unordered_set<string> wordsEntered;
+Digraph board;
 Trie dict; // Stores a given dictionary in a Trie data structure
-string letters = ""; // Stores all the letters on a randomly generated boggle board
+string letters; // Stores all the letters on a randomly generated boggle board
 
 // Initialize the Serial Communication
-SerialPort Serial("/dev/ttyACM6");
+SerialPort Serial("/dev/ttyACM0");
 
 // Initialize all the files that we will need later
 const string boardFile = "TextFiles/board-graph.txt";
@@ -29,6 +30,9 @@ const string diceFile = "TextFiles/boggle-dice.txt";
 
 using namespace std;
 
+void InGame(bool newBoard);
+
+// This wont be used for this file
 string GenerateLetters(){
     // Randomizes the seed based on time 
     srand(time(NULL));
@@ -74,91 +78,7 @@ string GenerateLetters(){
     return letters;
 }
 
-void GetBoardLetters() {
-    cout << "Waiting For Board Letters..." << endl;
-    // Gets the board letters from the arduino
-    char letter;
-
-    while (letters == "") 
-        letters = Serial.readline();
-}
-
-
-void CheckWordReceived(string line) {
-    cout << "Checking to see if '"<< line << "' is a valid word"<< endl;
-
-    if (dict.searchWord(line) && wordsEntered.find(line) == wordsEntered.end()) {
-        Serial.writeline("1");
-        wordsEntered.insert(line);
-        cout << "VALID" << endl;
-    }
-    else {
-        Serial.writeline("0");
-        cout << "INVALID" << endl;
-    }
-    cout << "\nWaiting for a word...\n\n";
-}
-
-Digraph createBoard() {
-    // Initialize an object of the Digraph class
-    Digraph board;
-
-    // Add a vertex at all 16 Blocks
-    for (int i = 0; i < NUM_TILES; i++)
-        board.addVertex(i);
-
-
-    for (int i = 0; i < NUM_TILES; i++) {
-        int x1 = i % 4;
-        int y1 = i / 4;
-
-        for (int j = 0; j < NUM_TILES; j++) {
-            if (j == i) 
-                continue;
-
-            int x2 = j % 4;
-            int y2 = j / 4;
-
-            if (abs(x1 - x2) <= 1 && abs(y1 - y2) <= 1)
-                board.addEdge(i, j);
-        }
-    }
-
-    // Return the board that was created
-    return board;
-}
-
-Trie MakeTrie() {
-    // Initialize a filestream
-    ifstream allWords(dictFile);
-
-    //Initialize an object of the Trie class
-    Trie dictionary;
-
-    // Read in all the lines from the file
-    string word;
-    while (getline(allWords, word)) {
-        // Adds the word to the Trie object
-        dictionary.insert(word);
-    }
-    // Close the file
-    allWords.close();
-
-    // Returns the Trie object
-    return dictionary;
-}
-
-void PrintBoard() {
-    cout << "Board looks like:\n";
-    //Prints out the word board
-    for (int i = 0; i < 16; i++) {
-        cout << letters[i] << " ";
-        if (i % 4 == 3) 
-            cout << endl;
-    }
-    cout << endl;
-}
-
+/*************************Functions For Solving Mode**************************/
 void solveTile(string currWord, vector<int> tilesVisited, Digraph board) {
     // Recurse 1 layer down if the currWord is not a subtring of any dictionary word
     if (!dict.searchPrefix(currWord))
@@ -202,7 +122,6 @@ void IterateBoard(Digraph board) {
         solveTile(firstLetter, tiles, board);
     }
 }
-
 
 void QuickSortLength(int start, int end) {
     // Let the partition value to the length of the first word of boggleWords
@@ -302,21 +221,133 @@ vector<pair<string, vector<int>>> EliminateRepeats() {
     return nonRepeats;
 }
 
-int main() {  
-    // Create an object of the Trie class, this object will holds dictionary information
-    dict = MakeTrie();
+int PossiblePoints() {
+    // Initialize a point counter to 0
     int totalPoints = 0;
 
-    // Randomly generate letters for the boggle board
-    //letters = GenerateLetters();
-    GetBoardLetters();
+    // Iterate through all the possible words
+    for (auto i : boggleWords) {
+        if (i.first.length() < 9)
+            totalPoints += i.first.length() - 2;
 
-    // Print out the created board
-    PrintBoard();
+        // In the real game boggle, points top out at 6 for words 8 letters or longer
+        else 
+            totalPoints = 6;
+    }
 
-    // Create an object of the Digraph class, this object is a graph of a boggle board
-    Digraph board = createBoard();
+    return totalPoints;
+}
 
+void SendWord() {
+    // Send the word until an acknowledgement is read
+    do {
+        Serial.writeline(boggleWords[0].first);
+        Serial.writeline("\n");
+    } while (Serial.readline() != "*\n");
+
+    // Send all tiles that make up the path, wait for an acknowledgement each time
+    for (int i = 0; i < boggleWords[0].first.length(); i++) {
+       do {
+            Serial.writeline(to_string(boggleWords[0].second[i]));
+            Serial.writeline("\n");
+        } while (Serial.readline() != "*\n");
+    }
+}
+
+void SendData(int totalPoints, int numWords) {
+    cout << "HERE" << endl;
+    do {
+        Serial.writeline(to_string(numWords));
+        Serial.writeline("\n");
+    } while (Serial.readline() != "*\n");
+
+    do {
+    Serial.writeline(to_string(totalPoints));
+    Serial.writeline("\n");
+    } while (Serial.readline() != "*\n");
+
+    SendWord();
+    while(true) {};
+}
+
+void Solving() {
+    IterateBoard(board);
+
+    QuickSortLength(0, boggleWords.size() - 1);
+
+    boggleWords = EliminateRepeats();
+    int totalPoints = PossiblePoints();
+    cout << "LIST OF ALL POSSIBLE WORDS\n";
+    for (auto i : boggleWords) {
+        cout << i.first <<", ";
+        for (auto j : i.second)
+            cout << j << " ";
+    cout << endl;
+    }
+    
+    cout << "Number of Attainable words: " << boggleWords.size() << endl << "Number of Attainable Points: " << totalPoints <<endl;
+    SendData(totalPoints, boggleWords.size());
+}
+/***************************END OF FUNCTION BLOCK*****************************/
+
+
+
+/*************************Functions For Post Game Mode**************************/
+string WaitForMode() {
+    string mode = "";
+    while (mode == "")
+        mode = Serial.readline();
+
+    return mode;
+}
+
+void EndGame() {
+    string mode = WaitForMode();
+
+    wordsEntered.clear();
+    if (mode == "0\n")
+        InGame(false);
+    else if (mode == "1\n") 
+        InGame(true);
+    else if (mode == "2\n")
+        Solving();
+}
+
+/***************************END OF FUNCTION BLOCK*****************************/
+
+
+
+/*************************Functions For In Game Mode**************************/
+void PrintBoard() {
+    cout << "Board looks like:\n";
+    //Prints out the word board
+    for (int i = 0; i < 16; i++) {
+        cout << letters[i] << " ";
+        if (i % 4 == 3) 
+            cout << endl;
+    }
+    cout << endl;
+}
+
+void CheckWordReceived(string line) {
+    cout << "Checking to see if '"<< line << "' is a valid word"<< endl;
+    // If a 2\n is received, this indicates that SOLVE was pressed
+    if (line == "2")
+        Solving();
+
+    if (dict.searchWord(line) && wordsEntered.find(line) == wordsEntered.end()) {
+        Serial.writeline("1");
+        wordsEntered.insert(line);
+        cout << "VALID" << endl;
+    }
+    else {
+        Serial.writeline("0");
+        cout << "INVALID" << endl;
+    }
+    cout << "\nWaiting for a word...\n\n";
+}
+
+void WaitForWords() {
     // Declare a variable to hold line
     string line = "";
     cout << "Waiting for first word...\n\n";
@@ -332,32 +363,107 @@ int main() {
             CheckWordReceived(line);
         }
     }
+}
 
-    IterateBoard(board);
+void GetBoardLetters() {
+    cout << "Waiting For Board Letters..." << endl;
+    // Gets the board letters from the arduino
+    char letter;
+    letters = "";
 
-    QuickSortLength(0, boggleWords.size() - 1);
+    while (letters == "") 
+        letters = Serial.readline();
+}
 
-    boggleWords = EliminateRepeats();
-    
-    cout << "LIST OF ALL POSSIBLE WORDS\n";
-    for (auto i : boggleWords) {
-        cout << i.first <<", ";
-        for (auto j : i.second)
-            cout << j << " ";
-        if (i.first.length() == 3)
-            totalPoints += 1;
-        else if (i.first.length() == 4)
-            totalPoints += 2;
-        else if (i.first.length() == 5)
-            totalPoints += 3;
-        else if (i.first.length() == 6)
-            totalPoints += 4;
-        else if (i.first.length() == 7)
-            totalPoints += 5;
-        else 
-            totalPoints += 6; 
-    cout << endl;
+void InGame(bool newBoard){
+    if (newBoard)
+        // Waits for board letters to come from the arduino
+        GetBoardLetters();
+
+    // Print out the created board
+    PrintBoard();
+
+    // Wait for words to be sent to the server
+    WaitForWords();
+
+    // Go to end game when the time runs out 
+    EndGame();
+}
+/***************************END OF FUNCTION BLOCK*****************************/
+
+
+
+/*************************Functions For Pre Game Mode**************************/
+Trie MakeTrie() {
+    // Initialize a filestream
+    ifstream allWords(dictFile);
+
+    //Initialize an object of the Trie class
+    Trie dictionary;
+
+    // Read in all the lines from the file
+    string word;
+    while (getline(allWords, word)) {
+        // Adds the word to the Trie object
+        dictionary.insert(word);
     }
-    
-    cout << "Number of Attainable words: " << boggleWords.size() << endl << "Number of Attainable Points: " << totalPoints <<endl;
+    // Close the file
+    allWords.close();
+
+    // Returns the Trie object
+    return dictionary;
+}
+
+Digraph createBoard() {
+    // Initialize an object of the Digraph class
+    Digraph board;
+
+    // Add a vertex at all 16 Blocks
+    for (int i = 0; i < NUM_TILES; i++)
+        board.addVertex(i);
+
+
+    for (int i = 0; i < NUM_TILES; i++) {
+        int x1 = i % 4;
+        int y1 = i / 4;
+
+        for (int j = 0; j < NUM_TILES; j++) {
+            if (j == i) 
+                continue;
+
+            int x2 = j % 4;
+            int y2 = j / 4;
+
+            if (abs(x1 - x2) <= 1 && abs(y1 - y2) <= 1)
+                board.addEdge(i, j);
+        }
+    }
+
+    // Return the board that was created
+    return board;
+}
+
+void PreGameSetup() {
+    // Create an object of the Trie class, this object will holds dictionary information
+    dict = MakeTrie();
+
+    // Create an object of the Digraph class, this object is a graph of a boggle board
+    board = createBoard();
+}
+
+void PreGame() {
+    // Sets up the server
+    PreGameSetup();
+
+    // Go to the in game once letters are received
+    InGame(true);
+}
+/***************************END OF FUNCTION BLOCK*****************************/
+
+
+
+
+int main() {  
+    PreGame();
+    return 0;
 }
