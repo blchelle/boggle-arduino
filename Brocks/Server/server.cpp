@@ -18,65 +18,19 @@ Trie dict; // Stores a given dictionary in a Trie data structure
 string letters; // Stores all the letters on a randomly generated boggle board
 
 // Initialize the Serial Communication
-SerialPort Serial("/dev/ttyACM0");
+SerialPort Serial("/dev/ttyACM5");
 
 // Initialize all the files that we will need later
-const string boardFile = "TextFiles/board-graph.txt";
 const string dictFile = "TextFiles/words.txt"; // from "http://www.gwicks.net/dictionaries.htm"
 const string diceFile = "TextFiles/boggle-dice.txt";
- 
+
 #define NUM_SIDES_DIE 6 // Number of sides on a boggle die
 #define NUM_TILES 16 // Number of tiles on a boggle board
 
 using namespace std;
 
+
 void InGame(bool newBoard);
-
-// This wont be used for this file
-string GenerateLetters(){
-    // Randomizes the seed based on time 
-    srand(time(NULL));
-
-    // Initialize a filestream, and a variable that will hold dice letters
-    ifstream allDice (diceFile);
-    vector<string> dice;
-
-    // Read in all the lines from the file
-    string line;
-    while(getline(allDice, line)) {
-        // Line will be 6 letters in the form XXXXXX
-        dice.push_back(line);
-    }
-
-    // Declares variable that will hold the number of dice left to be chosen 
-    int numDice = NUM_TILES;
-
-    // Declares variable that will store random numbers
-    int dieChosen;
-    int letterChosen;
-
-    string letters;
-    for (int i = 0; i < NUM_TILES; i++) {
-        // Randomly choose from the remaining set of dice
-        dieChosen = rand() % numDice;
-        string dieLetters = dice[dieChosen];
-
-        // Randomly choose a letter from the selected die
-        letterChosen = rand() % NUM_SIDES_DIE;
-
-        // Append that letter to the list of letters
-        letters += dieLetters[letterChosen];
-
-        // Erase the chosen die from the list of dice
-        dice.erase(dice.begin() + dieChosen);
-        numDice--;
-    }
-    // Close the file
-    allDice.close();
-
-    // Return the list of random letters
-    return letters;
-}
 
 /*************************Functions For Solving Mode**************************/
 void solveTile(string currWord, vector<int> tilesVisited, Digraph board) {
@@ -91,6 +45,7 @@ void solveTile(string currWord, vector<int> tilesVisited, Digraph board) {
 
     // Iterate through all of the tiles neighbours
     for (auto it = board.neighbours(tilesVisited.back()); it != board.endIterator(tilesVisited.back()); it++) {
+
         // Append the tile visited to the vector
         tilesVisited.push_back(*it);
         currWord.push_back(letters[*it]);
@@ -210,10 +165,11 @@ vector<pair<string, vector<int>>> EliminateRepeats() {
     QuickSortAlpha(prev, boggleWords.size() - 1);
 
     // Iterate through the now alphabetially by length sorted list
-    for (int i = 1; i < boggleWords.size(); i++) {
+    for (int i = 0; i < boggleWords.size(); i++) {
         // Since its sorted, identical elements will be right next to eachother
         // So if two consecutive elements are identical leave out the second one
-        if (boggleWords[i].first != boggleWords[i - 1].first)
+
+        if (boggleWords[i].first != boggleWords[i + 1].first || i == boggleWords.size() - 1)
             nonRepeats.push_back({boggleWords[i].first, boggleWords[i].second});
     }
 
@@ -238,24 +194,34 @@ int PossiblePoints() {
     return totalPoints;
 }
 
-void SendWord() {
+void SendWord(int index) {
     // Send the word until an acknowledgement is read
     do {
-        Serial.writeline(boggleWords[0].first);
+        Serial.writeline(boggleWords[index].first);
+        Serial.writeline("\n");
+    } while (Serial.readline() != "*\n");
+
+    cout << boggleWords[index].first << " ";
+
+    do {
+        Serial.writeline(to_string(boggleWords[index].first.length()));
         Serial.writeline("\n");
     } while (Serial.readline() != "*\n");
 
     // Send all tiles that make up the path, wait for an acknowledgement each time
-    for (int i = 0; i < boggleWords[0].first.length(); i++) {
+    for (int i = 0; i < boggleWords[index].first.length(); i++) {
        do {
-            Serial.writeline(to_string(boggleWords[0].second[i]));
+            Serial.writeline(to_string(boggleWords[index].second[i]));
             Serial.writeline("\n");
         } while (Serial.readline() != "*\n");
+        cout << boggleWords[index].second[i] << ", ";
     }
+
+    cout << "Sent to serial monitor\n\n";
 }
 
 void SendData(int totalPoints, int numWords) {
-    cout << "HERE" << endl;
+    
     do {
         Serial.writeline(to_string(numWords));
         Serial.writeline("\n");
@@ -266,16 +232,10 @@ void SendData(int totalPoints, int numWords) {
     Serial.writeline("\n");
     } while (Serial.readline() != "*\n");
 
-    SendWord();
-    while(true) {};
+    SendWord(0);
 }
 
-void Solving() {
-    IterateBoard(board);
-
-    QuickSortLength(0, boggleWords.size() - 1);
-
-    boggleWords = EliminateRepeats();
+void GetWordData() {
     int totalPoints = PossiblePoints();
     cout << "LIST OF ALL POSSIBLE WORDS\n";
     for (auto i : boggleWords) {
@@ -285,8 +245,52 @@ void Solving() {
     cout << endl;
     }
     
-    cout << "Number of Attainable words: " << boggleWords.size() << endl << "Number of Attainable Points: " << totalPoints <<endl;
+    cout << "Number of Attainable words: " << boggleWords.size() << endl << "Number of Attainable Points: " << totalPoints << "\n\n";
     SendData(totalPoints, boggleWords.size());
+}
+
+int WaitForInput(int index) {
+    string line = "";
+
+    cout << "Waiting For Button Press...\n";
+    while (line == "") {
+        line = Serial.readline();
+    } 
+
+
+    if (line == "0\n") {
+        cout << "NEW GAME (SAME BOARD)\n";
+        InGame(false);
+    }
+    else if (line == "1\n") {
+        cout << "NEW GAME (NEW BOARD)\n";
+        InGame(true);
+    }
+    else if (line == "2\n") {
+        index--;
+        cout << "SENDING PREVIOUS SOLVED WORD\n";
+        SendWord(index);
+    }
+    else if (line == "3\n") {
+        index++;
+        cout << "SENDING NEXT SOLVED WORD\n";
+        SendWord(index);
+    }
+    return index;
+}
+
+void Solving() {
+    IterateBoard(board);
+
+    QuickSortLength(0, boggleWords.size() - 1);
+
+    boggleWords = EliminateRepeats();
+    GetWordData();
+
+    int index = 0;
+
+    while (true) 
+        index = WaitForInput(index);
 }
 /***************************END OF FUNCTION BLOCK*****************************/
 
@@ -318,6 +322,7 @@ void EndGame() {
 
 
 /*************************Functions For In Game Mode**************************/
+
 void PrintBoard() {
     cout << "Board looks like:\n";
     //Prints out the word board
@@ -366,7 +371,7 @@ void WaitForWords() {
 }
 
 void GetBoardLetters() {
-    cout << "Waiting For Board Letters..." << endl;
+    cout << "Waiting For Board Letters...\n" << endl;
     // Gets the board letters from the arduino
     char letter;
     letters = "";
@@ -376,6 +381,8 @@ void GetBoardLetters() {
 }
 
 void InGame(bool newBoard){
+    boggleWords.clear();
+
     if (newBoard)
         // Waits for board letters to come from the arduino
         GetBoardLetters();
@@ -417,26 +424,27 @@ Trie MakeTrie() {
 Digraph createBoard() {
     // Initialize an object of the Digraph class
     Digraph board;
+    vector<int> neighbours;
 
     // Add a vertex at all 16 Blocks
     for (int i = 0; i < NUM_TILES; i++)
         board.addVertex(i);
 
-
     for (int i = 0; i < NUM_TILES; i++) {
-        int x1 = i % 4;
-        int y1 = i / 4;
+        // Initialize all the possible neighbours
+        neighbours = {i - 5, i - 4, i - 3, 
+                      i - 1,        i + 1,
+                      i + 3, i + 4, i + 5};
 
-        for (int j = 0; j < NUM_TILES; j++) {
-            if (j == i) 
-                continue;
-
-            int x2 = j % 4;
-            int y2 = j / 4;
-
-            if (abs(x1 - x2) <= 1 && abs(y1 - y2) <= 1)
-                board.addEdge(i, j);
-        }
+        // Iterate through all the possible neighbours.
+        for (auto n : neighbours) 
+            // Neighbours must be...
+            // a) On the board
+            // b) Be within 1 for both x & y coordinates
+            if (abs(i % 4 - n % 4) <= 1 && abs(i / 4 - n / 4) <= 1 && 
+                n % 4 >= 0 && n / 4 >= 0 && n % 4 <= 3 && n / 4 <= 3) { 
+                board.addEdge(i, n);
+            }
     }
 
     // Return the board that was created

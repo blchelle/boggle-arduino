@@ -67,11 +67,6 @@ String DICE[16] = { "AEANEG", "AHSPCO", "ASPFFK", "OBJOAB", "IOTMUC", "RYVDEL",
    'boardLetters' is global because it is used very frequently and contents are raraely changed */
 String boardLetters;
 
-struct word_path {
-    String word;
-    uint8_t path[NUM_TILES];
-};
-
 // Keeps Track of Points and time for the game
 uint16_t points = 0;
 uint32_t time = GAME_TIME; 
@@ -198,50 +193,94 @@ void BoxStartTile(uint8_t tile) {
     }
 }
 
+void ClearBoard() {
+    tft.fillRect(0,0, GAME_SIZE, DISPLAY_HEIGHT, ILI9341_BLACK);
+    
+    for (int i = 0; i < NUM_TILES; i++)
+        DrawTile(boardLetters[i], i, ILI9341_WHITE);
+}
+
 //********************END OF FUNCTION BLOCK*******************************//
 
 
 
 //********************Functions that will be used in the 'solver' mode********************//
 String ReadToSpace() {
-  /*
-  DESCRIPTION
-  Reads all letters and stores up to a string
+    /*
+    DESCRIPTION
+    Reads all letters and stores up to a string
 
-  PARAMETERS
-  Void
+    PARAMETERS
+    Void
 
-  RETURNS
-  line (String): A string storing all characters up to a space or \n
-  */
+    RETURNS
+    line (String): A string storing all characters up to a space or \n
+    */
 
-  // Declares a letter and a line
-  char letter;
-  String line = "";
+    // Declares a letter and a line
+    char letter;
+    String line = "";
 
-  // If top bit on serial monitor is acknowledgement, keep looking
-  while (Serial.peek() == '*') {}
+    // If top bit on serial monitor is acknowledgement, keep looking
+    while (Serial.peek() == '*') {}
 
-  while (true) {
-    // Read in a character
-    letter = Serial.read();
+    while (true) {
+        // Read in a character
+        letter = Serial.read();
 
-    // If newline is reached then return
-    if (letter == '\n') {
-        Serial.println('*'); // * means acknowledgement
-        Serial.flush();
-        delay(50);
-        return line; // Return the line
-    }
+        // If newline is reached then return
+        if (letter == '\n') {
+            Serial.println('*'); // * means acknowledgement
+            delay(100);
+            return line; // Return the line
+        }
 
     // Add letter to line
     line += letter;
-  }
+    }
+}
+
+void GetAndDrawWord() {
+    String leftovers = ReadToSpace();
+    uint8_t length = ReadToSpace().toInt();
+    
+    String word = "";
+    // Declares variables to hold current and previous space of tiles
+    uint8_t prevTile;
+    uint8_t tile;
+
+    // Get as many tiles as there are letters in the word
+    for (int i = 0; i < length; i++) {
+        tile = ReadToSpace().toInt();
+        word += boardLetters[tile];
+
+        DrawTile(boardLetters[tile], tile, ILI9341_GREEN);
+
+        if (i == 0)
+            BoxStartTile(tile);
+        else
+            ConnectTiles(prevTile, tile, word.length(), ILI9341_GREEN);
+
+        prevTile = tile;
+    }
+
+
+
+    // Reset the word box
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+    DrawWord(word);
+}
+
+
+void RedrawIndex(uint16_t i) {
+    tft.setCursor(GAME_SIZE + 60, 2 * BUTTON_HEIGHT + 3 * SPACE_BETWEEN);
+    tft.print(i);
 }
 
 uint16_t SolveBoardSetup() {
-    // Clears the Button Column
+    // Clears the Screen
     tft.fillRect(GAME_SIZE, 0, BUTTON_WIDTH, DISPLAY_HEIGHT, ILI9341_BLACK);
+    ClearBoard();
 
     // Draws the 4 solving mode buttons
     tft.setTextSize(TEXT_SIZE);
@@ -254,6 +293,7 @@ uint16_t SolveBoardSetup() {
     tft.setTextSize(2);
     tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
     tft.print("WORD:"); 
+    RedrawIndex(1);
 
     tft.setCursor(GAME_SIZE, 2 * BUTTON_HEIGHT + 5 * SPACE_BETWEEN);
     tft.print("OF:");
@@ -270,47 +310,59 @@ uint16_t SolveBoardSetup() {
     tft.setCursor(GAME_SIZE + 38, 2 * BUTTON_HEIGHT + 8 * SPACE_BETWEEN);
     tft.print(possiblePoints);
 
-    String word = ReadToSpace();
-    //String line = ReadLine();
-    //word_path currWord = ParseLine(line);
-    
-    uint8_t prevTile;
-    uint8_t tile;
-    for (int i = 0; i < word.length(); i++) {
-        tile = ReadToSpace().toInt();
-        DrawTile(boardLetters[tile], tile, ILI9341_GREEN);
-
-        if (i == 0)
-            BoxStartTile(tile);
-        else
-            ConnectTiles(prevTile, tile, word.length(), ILI9341_GREEN);
-
-        prevTile = tile;
-    }
-    
-    // Reset the word box
-    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-    DrawWord(word);
-    
-
-
     return numWords;
 }
 
-void SolvingButtons(TSPoint touch) {
+uint16_t SolvingButtons(TSPoint touch, uint16_t index, uint16_t numWords) {
     if (touch.x < GAME_SIZE)
-        return;
+        return index;
+
+    // Check if same was pressed
+    if (touch.y > GAME_SIZE - SPACE_BETWEEN) {
+        Serial.println("0"); // 0 indicates new game, same board
+        ClearBoard();
+
+        // Go back into the game, without generating new letters
+        InGame(false);
+    }
+    else if (touch.y > GAME_SIZE - TILE_SIZE - SPACE_BETWEEN) {
+        Serial.println("1"); // 0 indicates new game, same board
+        ClearBoard();
+        // Go back into the game, without generating new letters
+        InGame(true);
+    }
+    else if (touch.y < 1 * BUTTON_HEIGHT + 1 * SPACE_BETWEEN && index > 0) {
+        index--;
+        RedrawIndex(index + 1);
+        ClearBoard();
+        Serial.println("2");
+        GetAndDrawWord();
+    }
+    else if (touch.y < 2 * BUTTON_HEIGHT + 2 * SPACE_BETWEEN && touch.y > SPACE_BETWEEN + BUTTON_HEIGHT
+            && index < numWords - 1) {
+        index++;
+    RedrawIndex(index + 1);
+        ClearBoard();
+        Serial.println("3");
+        GetAndDrawWord();
+    }
+
+    return index;
+
 }
 
 void SolveBoard() {
     uint16_t numWords = SolveBoardSetup();
+    GetAndDrawWord();
+
+    uint16_t index = 0;
     while (true) {
         TSPoint touch = processTouch();
 
         if (!pressCurr || pressPrev)
             continue;
 
-        SolvingButtons(touch);
+        index = SolvingButtons(touch, index, numWords);
     }
 }
 
@@ -441,42 +493,6 @@ uint32_t CheckTime(uint32_t start) {
     return start;
 }
 
-void InGameSetup(bool newLetters) {
-    DrawWord("");
-    // Clears the Button Column
-    tft.fillRect(GAME_SIZE, 0, BUTTON_WIDTH, DISPLAY_HEIGHT, ILI9341_BLACK);
-
-    // Draws the 3 in game buttons
-    DrawButton(GAME_SIZE, SPACE_BETWEEN, "SOLVE");
-    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "ERASE");
-    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "ENTER");
-
-    // Alter text size, color for writing points and time
-    tft.setTextSize(2);
-    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-    
-    // Write the time indicator
-    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 45) / 2, TILE_SIZE + 2 * SPACE_BETWEEN);
-    tft.print("TIME");
-    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
-    tft.print(time);
-
-    // Write thr points indicator
-    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 70) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN);
-    tft.print("POINTS");
-    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 10) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
-    tft.print(points);
-
-    if (newLetters) {
-        // Generates a random board NUM_SHUFFLES times, this is what creates the "shuffle" animation
-        for (int i = 0; i < NUM_SHUFFLES; i++) {
-            boardLetters = "";
-            GenerateLetters();
-        }
-        // Send the board to the server
-        Serial.println(boardLetters);
-    }
-}
 
 uint8_t TileValidity(uint8_t* visited, uint8_t tile ,uint8_t wLength) {
     if (wLength == 0)
@@ -561,11 +577,6 @@ String Enter(String word, uint8_t* visited) {
     return word;
 }
 
-void ClearBoard(String word, uint8_t* visited) {
-    while (word != "")
-        word = Erase(word, &visited[0]);
-}
-
 String InGameButtons(TSPoint touch, String word, uint8_t* visited) {
     // Determines if somewhere on the buttons column was touched
     if (touch.x > GAME_SIZE) {
@@ -580,7 +591,7 @@ String InGameButtons(TSPoint touch, String word, uint8_t* visited) {
         // Determines if the solving button was pressed
         else if (touch.y < BUTTON_HEIGHT + SPACE_BETWEEN) {
             Serial.println("2");
-            ClearBoard(word, &visited[0]);
+            ClearBoard();
             SolveBoard();
         }
 
@@ -590,6 +601,50 @@ String InGameButtons(TSPoint touch, String word, uint8_t* visited) {
 
     // Return the altered word
     return word;
+}
+
+void InGameSetup(bool newLetters) {
+    DrawWord("");
+
+    tft.setTextSize(TEXT_SIZE);
+
+    // Clears the Button Column
+    tft.fillRect(GAME_SIZE, 0, BUTTON_WIDTH, DISPLAY_HEIGHT, ILI9341_BLACK);
+
+    // Draws the 3 in game buttons
+    DrawButton(GAME_SIZE, SPACE_BETWEEN, "SOLVE");
+    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "ERASE");
+    DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "ENTER");
+
+    // Alter text size, color for writing points and time
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+
+    // Initialize the start time and starting amount of points
+    time = GAME_TIME;
+    points = 0;
+    
+    // Write the time indicator
+    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 45) / 2, TILE_SIZE + 2 * SPACE_BETWEEN);
+    tft.print("TIME");
+    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
+    tft.print(time);
+
+    // Write thr points indicator
+    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 70) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN);
+    tft.print("POINTS");
+    tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 10) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
+    tft.print(points);
+
+    if (newLetters) {
+        // Generates a random board NUM_SHUFFLES times, this is what creates the "shuffle" animation
+        for (int i = 0; i < NUM_SHUFFLES; i++) {
+            boardLetters = "";
+            GenerateLetters();
+        }
+        // Send the board to the server
+        Serial.println(boardLetters);
+    }
 }
 
 void InGame(bool newLetters) {
