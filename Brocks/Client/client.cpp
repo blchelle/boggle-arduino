@@ -10,6 +10,7 @@
 #define TFT_CS 10
 #define SD_CS 6
 #define RAND_PIN A7
+#define SOUND_PIN 3
 
 // Define thresholds to determine if there was a touch
 #define MIN_PRESSURE 10
@@ -222,7 +223,7 @@ String ReadToSpace() {
     String line = "";
 
     // If top bit on serial monitor is acknowledgement, keep looking
-    while (Serial.peek() == '*') {}
+    while (Serial.peek() == '*' || Serial.available() == 0) {}
 
     while (true) {
         // Read in a character
@@ -231,7 +232,8 @@ String ReadToSpace() {
         // If newline is reached then return
         if (letter == '\n') {
             Serial.println('*'); // * means acknowledgement
-            delay(100);
+            Serial.flush();
+            delay(10);
             return line; // Return the line
         }
 
@@ -241,7 +243,6 @@ String ReadToSpace() {
 }
 
 void GetAndDrawWord() {
-    String leftovers = ReadToSpace();
     uint8_t length = ReadToSpace().toInt();
     
     String word = "";
@@ -271,8 +272,8 @@ void GetAndDrawWord() {
     DrawWord(word);
 }
 
-
 void RedrawIndex(uint16_t i) {
+    tft.fillRect(GAME_SIZE + 60, 2 * BUTTON_HEIGHT + 3 * SPACE_BETWEEN, BUTTON_WIDTH - 60, 16, ILI9341_BLACK);
     tft.setCursor(GAME_SIZE + 60, 2 * BUTTON_HEIGHT + 3 * SPACE_BETWEEN);
     tft.print(i);
 }
@@ -348,11 +349,11 @@ uint16_t SolvingButtons(TSPoint touch, uint16_t index, uint16_t numWords) {
     }
 
     return index;
-
 }
 
 void SolveBoard() {
     uint16_t numWords = SolveBoardSetup();
+
     GetAndDrawWord();
 
     uint16_t index = 0;
@@ -433,9 +434,11 @@ void PostGame() {
 
 //********************Functions that will be used during gameplay********************//
 void GenerateLetters() {
+    // Variables that will hold pseudorandomly drawn letters
     int dieChosen;
     int letterChosen;
 
+    // Randomly seeds the input based on the voltage at analog pin
     randomSeed(analogRead(RAND_PIN));
 
     for (int i = 0; i < NUM_TILES; i++) {
@@ -552,7 +555,7 @@ String Enter(String word, uint8_t* visited) {
     // Send the word to the server
     Serial.println(word);
 
-    while (Serial.available() != 1) {}
+    while (Serial.peek() != '0' && Serial.peek() != '1') {}
     // Wait for either a 0 or 1 to be sent
     isWord = Serial.read();
     if (isWord == '1') {
@@ -572,6 +575,7 @@ String Enter(String word, uint8_t* visited) {
         tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
         DrawWord("INVALID!");
     }
+    Serial.println("*");
 
     // Return the blank string
     return word;
@@ -604,8 +608,10 @@ String InGameButtons(TSPoint touch, String word, uint8_t* visited) {
 }
 
 void InGameSetup(bool newLetters) {
+    // Clears the word box in the bottom left
     DrawWord("");
 
+    // Sets the text size to 3
     tft.setTextSize(TEXT_SIZE);
 
     // Clears the Button Column
@@ -616,31 +622,32 @@ void InGameSetup(bool newLetters) {
     DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 3 * TILE_SIZE, "ERASE");
     DrawButton(GAME_SIZE, 4 * SPACE_BETWEEN + 4 * TILE_SIZE, "ENTER");
 
-    // Alter text size, color for writing points and time
+    // Alters text size, color for writing points and time
     tft.setTextSize(2);
     tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
 
-    // Initialize the start time and starting amount of points
+    // Initializes the start time and starting amount of points
     time = GAME_TIME;
     points = 0;
     
-    // Write the time indicator
+    // Write the time indicator as well as the starting time
     tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 45) / 2, TILE_SIZE + 2 * SPACE_BETWEEN);
     tft.print("TIME");
     tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 22) / 2, TILE_SIZE + 2 * SPACE_BETWEEN + 20);
     tft.print(time);
 
-    // Write thr points indicator
+    // Write thr points indicator as well as the starting points (0)
     tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 70) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN);
     tft.print("POINTS");
     tft.setCursor(GAME_SIZE + (BUTTON_COL_WIDTH - 10) / 2, 2 * TILE_SIZE + 3 * SPACE_BETWEEN + 20);
     tft.print(points);
 
+    // If we require new letters, then new letters will be generated and sent to server
     if (newLetters) {
         // Generates a random board NUM_SHUFFLES times, this is what creates the "shuffle" animation
         for (int i = 0; i < NUM_SHUFFLES; i++) {
-            boardLetters = "";
-            GenerateLetters();
+            boardLetters = ""; // All but the last shuffle matter
+            GenerateLetters(); // Generates 16 random letters for the board
         }
         // Send the board to the server
         Serial.println(boardLetters);
@@ -696,6 +703,7 @@ void InGame(bool newLetters) {
         pressPrev = pressCurr;
     }
     word = Enter(word, &visited[0]);
+    tone(SOUND_PIN, 800, 1000);
     // Send NEXT PHASE\n to the server to indicate the end of the game
     Serial.println("NEXT PHASE");
     PostGame();
@@ -748,38 +756,3 @@ int main() {
     Serial.end();
     return 0;
 }
-
-/*
-String ReadLine() {
-    char letter = ' ';
-    String line = "";
-
-    while (true) {
-        tft.setCursor(0, 0);
-        letter = Serial.read();
-
-        if (letter == '\n')
-            return line;
-
-        line += letter;
-        tft.println(line);
-        tft.println(Serial.available());
-        delay(1000);
-    }
-}
-
-word_path ParseLine(String line) {
-    word_path currWord;
-
-    uint8_t spaces[line.length() + 1];
-
-    spaces[0] = line.indexOf(' ');
-    currWord.word = line.substring(0, spaces[0]);
-
-    for (int i = 1; i < line.length() + 1; i++) {
-        spaces[i] = line.indexOf(' ', spaces[i - 1] + 1);
-        currWord.path[i - 1] = line.substring(spaces[i - 1] + 1, spaces[i]).toInt();
-    }
-
-    return currWord;
-}*/
