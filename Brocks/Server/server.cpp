@@ -1,3 +1,12 @@
+/*
+Names: Brock Chelle, Benjamin Wagg
+IDs: 1533398, 1531566
+CCID: bchelle, bwagg
+Course: CMPUT 275
+Term: Winter 2019
+Final Project: Boggle Solver (Part 2)
+*/
+
 #include <iostream> // Gives access to stdin, stdout
 
 #include <string> // Gives access to strings
@@ -18,7 +27,7 @@ Trie dict; // Stores a given dictionary in a Trie data structure
 string letters; // Stores all the letters on a randomly generated boggle board
 
 // Initialize the Serial Communication
-SerialPort Serial("/dev/ttyACM4");
+SerialPort Serial("/dev/ttyACM7");
 
 // Initialize all the files that we will need later
 const string dictFile = "TextFiles/words.txt"; // from "http://www.gwicks.net/dictionaries.htm"
@@ -235,7 +244,7 @@ void GetWordData() {
     for (auto i : boggleWords) {
         cout << i.first <<", ";
         for (auto j : i.second)
-            cout << j << " ";
+            cout << "("<< j % 4 << ", " << j / 4 << ") ";
     cout << endl;
     }
     
@@ -254,10 +263,12 @@ int WaitForInput(int index) {
 
     if (line == "0\n") {
         cout << "NEW GAME (SAME BOARD)\n";
+        wordsEntered.clear();
         InGame(false);
     }
     else if (line == "1\n") {
         cout << "NEW GAME (NEW BOARD)\n";
+        wordsEntered.clear();
         InGame(true);
     }
     else if (line == "2\n") {
@@ -343,19 +354,19 @@ void CheckWordReceived(string line) {
         }
     } while (Serial.readline() != "*\n");
 
-    cout << "\nWaiting for a word...\n\n";
+    cout << "\nWaiting for a word...\n";
 }
 
 void WaitForWords() {
     // Declare a variable to hold line
     string line = "";
-    cout << "Waiting for first word...\n\n";
+    cout << "Waiting for first word...\n";
     // If not told to move to next phase then keep looping
-    while (line != "NEXT PHASE\n") {
+    while (line != "1\n") {
         line = Serial.readline();
 
         // If the line is not blank...
-        if (line != "" && line != "NEXT PHASE\n") {
+        if (line != "" && line != "1\n") {
             // Get rid of the \n that will be attached and check if its a word
             line = line.substr(0, line.length() - 1);
 
@@ -368,6 +379,7 @@ void WaitForWords() {
             CheckWordReceived(line);
         }
     }
+    cout << "TIME UP!\n\n";
 }
 
 void GetBoardLetters() {
