@@ -26,9 +26,7 @@ public:
     }
 
     void insert(string);
-    bool searchPrefix(string); 
     bool searchWord(string);
-    //void printTrie();
 };
 
 void Trie::insert(string word) {
@@ -49,36 +47,24 @@ void Trie::insert(string word) {
     currNode->isWord = true;
 }
 
-bool Trie::searchPrefix(string prefix) {
-    Trie* currNode = this;
-
-    for (int i = 0; i < prefix.length(); i++) {
-        // Travel to the next node
-        currNode = currNode->character[prefix[i]];
-
-        // If our prefix falls off of the trie then it is not valid
-        if (currNode == NULL) 
-            return false;
-    }
-
-    // If we make it through the entire word without falling off then return true
-    return true;
-}
-
 /* Due to the way that our code progresses, we've already guaranteed that the prefix is
    in the tree, so all wee need to do is travel to the node and see if its a leaf */
-bool Trie::searchWord(string word) {
+bool Trie::searchWord(string word, bool prefix) {
     Trie* currNode = this;
 
     for (int i = 0; i < word.length(); i++) {
         // Travel to the next node
         currNode = currNode->character[word[i]];
 
-                // If our prefix falls off of the trie then it is not valid
+        // If our prefix falls off of the trie then it is not valid
         if (currNode == NULL) 
             return false;
     }
-    return currNode->isWord;
+
+    if (!prefix)
+        return currNode->isWord;
+    else
+        return true;
 }
 
 

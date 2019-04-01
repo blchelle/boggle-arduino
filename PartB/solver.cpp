@@ -1,3 +1,12 @@
+/*
+Names: Brock Chelle, Benjamin Wagg
+IDs: 1533398, 1531566
+CCID: bchelle, bwagg
+Course: CMPUT 275
+Term: Winter 2019
+Final Project: Boggle Solver (Part 1)
+*/
+
 #include <iostream> // Gives access to stdin, stdout
 
 #include <string> // Gives access to strings
@@ -7,6 +16,7 @@
 #include <ctime> // Gives access to random number generation
 #include <time.h> // Gives access to timing the program
 #include <fstream> // Gives access to files
+#include <ctype.h> // Gives access to the toupper function
 
 #include "digraph.h" // Gives access to the Digraph class
 #include "trie.h" // Gives access to the Trie class
@@ -17,9 +27,8 @@ Digraph board;
 Trie dict; // Stores a given dictionary in a Trie data structure
 string letters = ""; // Stores all the letters on a randomly generated boggle board
 
-
 // Initialize all the files that we will need later
-const string dictFile = "TextFiles/words.txt"; // from "http://www.gwicks.net/dictionaries.htm"
+const string dictFile = "TextFiles/words.txt"; // Contains the dictionary used
 const string diceFile = "TextFiles/boggle-dice.txt"; // Contains all the dice information
  
 #define NUM_SIDES_DIE 6 // Number of sides on a boggle die
@@ -29,7 +38,7 @@ using namespace std;
 
 void SolveTile(string currWord, vector<int> tilesVisited, Digraph board) {
     // Recurse 1 layer down if the currWord is not a subtring of any dictionary word
-    if (!dict.searchPrefix(currWord))
+    if (!dict.searchWord(currWord, true))
         return;
     
     // Remove all of the edges that lead to the current tile (So that we can't go back to it)
@@ -50,7 +59,7 @@ void SolveTile(string currWord, vector<int> tilesVisited, Digraph board) {
     }
 
     // When we've iterated through all of a tiles neighbours, check to see if the tile is in dictionary
-    if (dict.searchWord(currWord))
+    if (dict.searchWord(currWord, false))
         boggleWords.push_back(pair<string, vector<int>>(currWord, tilesVisited));
 
     // End of function reached so it will recurse 1 layer out
@@ -70,7 +79,6 @@ void SolveBoard(Digraph board, int boardSize) {
         SolveTile(firstLetter, tiles, board);
     }
 }
-
 
 void QuickSortLength(int start, int end) {
     // Let the partition value to the length of the first word of boggleWords
@@ -159,10 +167,10 @@ vector<pair<string, vector<int>>> EliminateRepeats() {
     QuickSortAlpha(prev, boggleWords.size() - 1);
 
     // Iterate through the now alphabetially by length sorted list
-    for (int i = 1; i < boggleWords.size(); i++) {
+    for (int i = 0; i < boggleWords.size(); i++) {
         // Since its sorted, identical elements will be right next to eachother
         // So if two consecutive elements are identical leave out the second one
-        if (boggleWords[i].first != boggleWords[i - 1].first)
+        if (boggleWords[i].first != boggleWords[i + 1].first || i == boggleWords.size() - 1)
             nonRepeats.push_back({boggleWords[i].first, boggleWords[i].second});
     }
 
@@ -245,29 +253,21 @@ void GenerateLetters(int numLetters) {
     allDice.close();
 }
 
-Trie MakeTrie() {
+void MakeTrie() {
     // Initialize a filestream
     ifstream allWords(dictFile);
-
-    //Initialize an object of the Trie class
-    Trie dictionary;
 
     // Read in all the lines from the file
     string word;
     while (getline(allWords, word)) {
         // Adds the word to the Trie object
-        dictionary.insert(word);
+        dict.insert(word);
     }
     // Close the file
     allWords.close();
-
-    // Returns the Trie object
-    return dictionary;
 }
 
-Digraph createBoard(int x, int y) {
-    // Initialize an object of the Digraph class
-    Digraph board;
+void createBoard(int x, int y) {
     vector<int> neighbours;
 
     // Add a vertex at all blocks
@@ -279,14 +279,14 @@ Digraph createBoard(int x, int y) {
             board.addEdge(i, i + 1);
             board.addEdge(i + 1, i);
         }
-        return board;
+        return;
     }
     else if (y == 1) {
         for (int i = 1; i < x - 1; i++) {
             board.addEdge(i, i + 1);
             board.addEdge(i + 1, i);
         }
-        return board;
+        return;
     }
 
     for (int i = 0; i < x*y; i++) {
@@ -313,8 +313,6 @@ Digraph createBoard(int x, int y) {
                 board.addEdge(i, n);
             }
     }
-    // Return the board that was created
-    return board;
 }
 
 void PrintResults(clock_t t, int x) {
@@ -326,53 +324,119 @@ void PrintResults(clock_t t, int x) {
             if (i != w.second.back())
                 cout << ", ";
         }
-
-
         cout << endl;
     }
 
     cout << boggleWords.size() << " Words were found\n";
+    cout << PossiblePoints() << " Points can be found\n";
     cout << (float)(clock() - t) / CLOCKS_PER_SEC << " Seconds to run\n";
-
 }
 
-void Setup(int x, int y) {
-    // Create an object of the Trie class, this object will holds dictionary information
-    dict = MakeTrie();
+bool CheckInput() {
+    // Iterate through all the letters
+    for (int i = 0; i < letters.length(); i++) {
+        // Convert letter to uppercase
+        letters[i] = toupper(letters[i]);
+
+        // If letter is not alphabetical then return false
+        if (letters[i] < 65 || letters[i] > 90)
+            return false;
+    }
+
+    // Return true if all tests passed
+    return true;
+}
+
+void Setup(int x, int y, string ownBoard) {
+    /*
+    PURPOSE
+    Create the trie and board
+
+    PARAMETERS
+    x (int): The number of columns on the board
+    y (int): The number of rows on the board
+    ownBoard (char): Indicates whether to randomply generate or get input
+    */
+
+    // Create an object of the Trie class, this object will hold dictionary information
+    MakeTrie();
 
     // Create an object of the Digraph class, this object is a graph of a boggle board
-    board = createBoard(x, y);
+    createBoard(x, y);
 
+    // Gets input for board letters if thats what the user input
+    if (ownBoard == "Y") {
+        do {
+            // Prompt and get letters
+            cout << "Enter " << x*y << " Consecutive Letters: ";
+            getline(cin, letters);
+        } while(letters.length() != x*y || !CheckInput());
+    }
+    else if (ownBoard == "N") {
     // Randomly generates the board
     GenerateLetters(x * y);
+    }
 
     // Prints the board out
     PrintBoard(x, y);
 }
 
 void Solver() {
+    /*
+    PURPOSE
+    Generate or allow the user to input a board and solve it
+    */
+
+    // Declare a variable that determines if the board is random or input
+    string ownBoard;
+
+    // Get input for ownBoard
+    do {
+        // Print prompt message, get input
+        cout << "Input your own board (Y/N): ";
+        getline(cin, ownBoard);
+
+        // Convert to uppercase
+        ownBoard[0] = toupper(ownBoard[0]);
+
+      // Loop until the input is valid
+    } while (ownBoard != "Y" && ownBoard != "N");
+    
     // Input dimensions of board
     int x, y;
-    cin >> x >> y;
+    do {
+        // Print prompt message, get input
+        cout << "\nEnter Board Dimensions: ";
+        cin >> x >> y;
+
+      // Loop until the input is valid
+    } while (x < 1 || y < 1);
 
     // Makes the trie and the board
-    Setup(x, y);
+    Setup(x, y, ownBoard);
 
+    // Start the timer
     clock_t t = clock();
 
-    //
+    // Solve the board
     SolveBoard(board, x * y);
 
+    // Sort and eliminate words as long as the array is not empty
     if (boggleWords.size() > 0) {
+        // Sort the words by length
         QuickSortLength(0, boggleWords.size() - 1);
 
+        // Eliminate any word that appears more than once
         boggleWords = EliminateRepeats();
     }
 
+    // Print the results
     PrintResults(t, x);
 }
 
 int main() {  
+    // Enter the solver
     Solver();
+
     return 0;
 }

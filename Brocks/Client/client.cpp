@@ -479,7 +479,7 @@ uint16_t SolvingButtons(TSPoint touch, uint16_t index, uint16_t numWords) {
     }
     // Checks if "NEXT" was pressed
     else if (touch.y < 2 * BUTTON_HEIGHT + 2 * SPACE_BETWEEN && touch.y > SPACE_BETWEEN + BUTTON_HEIGHT
-            && index < numWords - 1) {
+            && index < numWords) {
         index++; // Increment index
         RedrawIndex(index); // Redraw the index
         ClearBoard(); // Clears the board
