@@ -368,7 +368,7 @@ void MakeTrie() {
     allWords.close();
 }
 
-void createBoard(int x, int y) {
+void CreateBoard(int x, int y) {
     /*
     PURPOSE
     Create the boject of the digraph class
@@ -471,6 +471,21 @@ void PrintResults(clock_t t, int x) {
     cout << (float)(clock() - t) / CLOCKS_PER_SEC << " Seconds to run\n";
 }
 
+bool CheckInput() {
+    // Convert all letters to uppercase, then check if valid
+    for (int i = 0; i < letters.length(); i++) {
+        letters[i] = toupper(letters[i]);
+
+        // False if a single letter fails
+        if (letters[i] < 'A' || letters[i] > 'Z')
+            return false;
+    }
+
+    // True if all letters pass
+    return true;
+
+}
+
 void Setup(int x, int y, char ownBoard) {
     /*
     PURPOSE
@@ -486,15 +501,16 @@ void Setup(int x, int y, char ownBoard) {
     MakeTrie();
 
     // Create an object of the Digraph class, this object is a graph of a boggle board
-    createBoard(x, y);
+    CreateBoard(x, y);
 
+    getline(cin, letters);
     // Gets input for board letters if thats what the user input
     if (ownBoard == 'Y') {
         // Prompt and get letters
+        do {
         cout << "Enter " << x*y << " Consecutive Letters: ";
         cin >> letters;
-        for (int i = 0; i < letters.length(); i++)
-            letters[i] = toupper(letters[i]);
+        } while (letters.length() != x*y || !CheckInput());      
     }
     else if (ownBoard == 'N') {
         // Randomly generates the board
@@ -528,7 +544,6 @@ void Solver() {
     
     // Input dimensions of board
     int x, y;
-
     // Print prompt message, get input
     cout << "Enter Board Dimensions: ";
     cin >> x >> y;

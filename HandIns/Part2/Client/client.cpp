@@ -473,7 +473,7 @@ uint16_t SolvingButtons(TSPoint touch, uint16_t index, uint16_t numWords) {
         InGame(true);
     }
     // Checks if "PREV" was pressed
-    else if (touch.y < 1 * BUTTON_HEIGHT + 1 * SPACE_BETWEEN && index > 0) {
+    else if (touch.y < 1 * BUTTON_HEIGHT + 1 * SPACE_BETWEEN && index > 1) {
         index--; // Decremrent index
         RedrawIndex(index); // Redraw the index
         ClearBoard(); // Clears the board
@@ -1031,6 +1031,9 @@ void InGame(bool newLetters) {
 
     // Sends 1\n to the server to indicate the end of the game
     Serial.println("1");
+    
+    // Delay by a second to avoid accidental button presses
+    delay(1000);
     PostGame(); // Goes into the post game function
 }
 
